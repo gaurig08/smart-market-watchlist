@@ -51,17 +51,17 @@ Transparent math. No black box. No investment advice.
 
 **Why sector comparison was cut.** An early version compared a stock's move to its sector average. I removed it deliberately — it added a second axis of "meaningful" that muddied the pitch and wasn't defensible with the data available. Every score here is purely a stock judged against its own history.
 
-**Why multilingual AI, not just an English chatbot.** SEBI's Investor Survey 2025 — covering 90,000+ households across 400 cities and 1,000 villages — found a consistent preference for investor education in regional languages across every demographic group. RBI/NCFE financial literacy data has repeatedly shown literacy stuck around 27%, and RBI's National Strategy for Financial Inclusion (2025-30) is explicitly built around improving last-mile delivery. The assistant's 11-language support directly targets that gap: it only explains numbers the deterministic engine already computed, so language access is added without touching the trustworthiness of the scoring.
+**Why multilingual AI, not just an English chatbot.** SEBI's Investor Survey 2025 covering 90,000+ households across 400 cities and 1,000 villages found a consistent preference for investor education in regional languages across every demographic group. RBI/NCFE financial literacy data has repeatedly shown literacy stuck around 27%, and RBI's National Strategy for Financial Inclusion (2025-30) is explicitly built around improving last-mile delivery. The assistant's 11-language support directly targets that gap: it only explains numbers the deterministic engine already computed, so language access is added without touching the trustworthiness of the scoring.
 
 **Why historical baselines and live prices come from different sources.** Bulk historical fetching through `yfinance` proved unreliable for stable baselines, so baselines are computed once from a Kaggle NSE dataset, while `yfinance` is used only for today's live price.
 
 **Why timestamps are UTC everywhere.** A real bug during testing: "New since last visit" stayed stuck because one part of the code used local time and another used UTC, so a checkin could never catch up to a signal written hours "in the future." Fixed by standardizing every timestamp on UTC.
 
-**Why there's a built-in demo mode.** NSE is closed most of the time a reviewer opens this app. The app detects market hours and offers a "Run Demo Scenarios" button that injects synthetic price moves through the *real* scoring pipeline, not a mock — an honest way to prove the logic works outside trading hours.
+**Why there's a built-in demo mode.** NSE is closed most of the time a reviewer opens this app. The app detects market hours and offers a "Run Demo Scenarios" button that injects synthetic price moves through the *real* scoring pipeline, not a mock an honest way to prove the logic works outside trading hours.
 
-**Why Groq instead of Gemini.** Gemini's free-tier limits made the chat assistant fail after 1-2 messages. Groq's free tier is far more generous for this workload, and the explainer falls back to a deterministic, localized response if the AI call fails — the feature never just breaks.
+**Why Groq instead of Gemini.** Gemini's free-tier limits made the chat assistant fail after 1-2 messages. Groq's free tier is far more generous for this workload, and the explainer falls back to a deterministic, localized response if the AI call fails the feature never just breaks.
 
-**What was knowingly simplified.** The Relative Move score assumes a stock's average daily return is close enough to zero to skip tracking separately — true for short lookback windows, but a simplification worth naming. A proper baseline mean would make the z-score fully rigorous instead of a close approximation.
+**What was knowingly simplified.** The Relative Move score assumes a stock's average daily return is close enough to zero to skip tracking separately true for short lookback windows, but a simplification worth naming. A proper baseline mean would make the z-score fully rigorous instead of a close approximation.
 
 ---
 
