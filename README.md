@@ -1,142 +1,92 @@
 # Smart Market Watchlist
 
-A watchlist that judges each stock's move against its OWN normal
-behaviour and against what you've personally already seen -- instead of
-a flat "moved 5%" rule used by every mainstream trading app.
+A smart stock watchlist that doesn't just show prices — it tells you **what meaningfully changed** since you last checked, judged against each stock's **own normal behaviour** (not a flat 5% rule).
 
-## Architecture -- a deliberate hybrid, and why
+Built for the **Code by Groww Hackathon**.
 
-**Baselines** ("what's normal for this stock") are computed from
-**imported historical data** (a Kaggle Nifty500 5-year dataset, filtered
-to 2025 and 2026 only, the most recent data available) -- a stable,
-offline, one-time operation with zero rate-limit risk.
+---
 
-**Live current prices** come from **yfinance**, fetched continuously in
-the background -- a small, low-risk API call per stock, not a bulk
-historical pull.
+## The Core Idea
 
-This split exists because we tried computing baselines via yfinance too
-(bulk-fetching a year of history per stock) and hit real, repeated
-rate-limit/reliability failures -- exactly the kind of fragile,
-internet-dependent step you don't want as a hard requirement right
-before a live demo. Historical data for the (stable) baseline, live data
-for the (must-be-current) price -- each piece uses the source that's
-actually reliable for that job.
+Most apps alert on fixed thresholds ("moved more than 5%").  
+We define "meaningful" as **relative to that stock's own history**:
 
-Sector is stored as a **display label only** (joined from a static CSV
-of NSE sector classifications) -- never used in scoring. A stock is
-judged only against its own history, per an explicit product decision.
+- A calm stock moving 3% can be more significant than a volatile stock moving 8%.
+- Each stock gets a **Relative Move** score (e.g. `2.4x` its normal daily range).
+- Users also see what changed **since their last visit** — personal, not global.
 
-## Honest limitations (stated up front, not hidden)
+Transparent math. No black box. No investment advice.
 
-- **Baseline data currently reflects 2025-2026 only** -- filtered
-  deliberately from a longer available window, so "normal" reflects
-  genuinely recent market behaviour rather than years-old patterns
-  (this also avoids old extreme-volatility periods skewing what counts
-  as "normal" today).
-- **yfinance is unofficial** -- scrapes Yahoo Finance's public site, not
-  a licensed feed, typically ~15min delayed. Disclosed trade-off for a
-  working prototype; production would use a licensed vendor.
-- **Cold-start stocks** need 20+ days of history before a baseline is
-  trusted -- honestly skipped otherwise, not guessed.
+---
 
-## 1. Set up Supabase
+## Features
 
-1. https://supabase.com -> sign up -> new project (set a DB password).
-2. Project Settings -> Database -> Connection pooling.
-3. Use **Session pooler** or **Transaction pooler** (port 5432 or 6543)
-   -- not the direct `db.xxxx.supabase.co` host (requires IPv6, fails on
-   many networks).
-4. Copy the connection string.
+- Create & manage a personal watchlist
+- Live prices (LTP, Change ₹, Change %, High, Low, Volume)
+- **Relative Move** score vs each stock's historical baseline
+- Plain-language **Status** explaining why a move matters
+- **Since Last Visit** — what changed while you were away
+- Multilingual AI assistant (Groq) that only explains already-computed data
+- Filters (price range, "needs attention only")
+- Graceful fallbacks when AI / live data is unavailable
 
-## 2. Local setup
+---
+
+## Architecture (deliberate choices)
+
+| Piece | Source | Why |
+|-------|--------|-----|
+| Historical baselines | Kaggle NSE dataset (offline) | Stable, zero rate-limit risk |
+| Live prices | yfinance (background fetch) | Simple, good enough for prototype |
+| Scoring | Deterministic Python (`signal_engine`) | Transparent, testable, no ML magic |
+| AI explainer | Groq (Llama) | Explains only — never decides scores |
+| UI | FastAPI + Jinja2 + Tailwind | Single deploy, solo-friendly |
+| DB | PostgreSQL (Supabase) | Persistent watchlists + baselines |
+
+**Explicitly avoided:** microservices, Kafka, Redis, React SPA, WebSockets — over-engineering for a 72-hour solo build.
+
+---
+
+## Tech Stack
+
+- **Backend:** Python, FastAPI, SQLAlchemy
+- **Frontend:** Jinja2 templates + Tailwind CSS + vanilla JS
+- **Database:** PostgreSQL (Supabase)
+- **Data:** Kaggle historical OHLCV + yfinance live
+- **AI:** Groq API (OpenAI-compatible)
+- **Deploy:** Replit / local
+
+---
+
+## Quick Start (Local)
 
 ```bash
+# 1. Clone & setup
+git clone https://github.com/gaurig08/smart-market-watchlist.git
+cd smart-market-watchlist
 python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
+# 2. Environment
 cp .env.example .env
-# paste your real Supabase connection string into .env
-```
-If your password contains `@`, URL-encode it as `%40`.
+# Fill in:
+#   DATABASE_URL=postgresql://...   (Supabase session pooler)
+#   GROQ_API_KEY=gsk_...
 
-## 3. Get the Kaggle dataset
-
-Download "NSE India Stock Market Data (2015-2024)" from Kaggle, place
-the CSV in `data/kaggle_raw/`.
-
-## 4. Run the app once (creates tables)
-
-```bash
+# 3. Create tables (start app once)
 uvicorn app.main:app --reload
-```
-Ctrl+C once it starts cleanly.
+# Ctrl+C after it starts cleanly
 
-## 5. Create a demo user
+# 4. Create demo user
+python -c "from app.db import SessionLocal; from app.models import User; db = SessionLocal(); u = User(name='Demo User'); db.add(u); db.commit(); print('User id:', u.id)"
 
-```bash
-python -c "from app.db import SessionLocal; from app.models import User; db = SessionLocal(); u = User(name='Demo User'); db.add(u); db.commit(); print('Created user id:', u.id)"
-```
-
-## 6. Import historical data and compute baselines
-
-```bash
-python -m scripts.import_kaggle data/kaggle_raw/nifty500_stocks.csv
+# 5. Import history + compute baselines
+python -m scripts.import_kaggle data/kaggle_raw/your_file.csv
 python -m scripts.run_baseline
-```
 
-## 7. Start the live fetcher (own terminal, keep running)
-
-```bash
+# 6. (Optional) Live price loop — separate terminal
 python -m scripts.fetch_live --loop
-```
 
-## 8. Start the app and use it
-
-```bash
+# 7. Run
 uvicorn app.main:app --reload
-```
-Open http://localhost:8000/watchlist/1, add a symbol that exists in your
-imported data (e.g. RELIANCE, TCS, INFY), watch it populate.
-
-## 9. Run the tests
-
-```bash
-pytest tests/ -v
-```
-Targets the scoring logic specifically -- proof the same raw % move
-scores differently for a calm vs. volatile stock, independent of any
-data source.
-
-## Project structure
-
-```
-app/
-  main.py                    FastAPI entrypoint
-  db.py                      database connection
-  models.py                  6 tables: users, watchlist_items,
-                              stock_daily_history, stock_baselines,
-                              stock_signals, watchlist_checkins
-  routers/watchlist.py        add/remove/view + "what changed" logic
-  services/
-    baseline_worker.py         computes "normal" from imported history
-    signal_engine.py           core scoring math, fully transparent
-  templates/watchlist.html     the UI
-scripts/
-  import_kaggle.py            one-time: load historical CSV, filtered to 2025-2026
-  run_baseline.py              CLI: recompute baselines from imported data
-  fetch_live.py                CLI: fetch + score current prices (--loop)
-data/
-  kaggle_raw/                  put the downloaded CSV here
-  sector_mapping.csv           NSE sector labels (display only)
-tests/
-  test_signal_engine.py        5 tests on the core scoring logic
-```
-
-## Explicitly out of scope (and why)
-
-- No real trading / auto-buy / wallet feature.
-- No portfolio-based ML recommendations.
-- No microservices, Kafka, Redis -- a small monolith is the right choice
-  for a solo build at this scale.
