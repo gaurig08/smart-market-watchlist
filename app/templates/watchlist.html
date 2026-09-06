@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Smart Watchlist</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            groww: {
+              green: '#00B386',
+              greendark: '#009971',
+              blue: '#2E7CF6',
+              amber: '#D9A200',
+              red: '#EB5B3C',
+              navy: '#0E1116',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+    .live-dot { animation: pulse-dot 1.8s ease-in-out infinite; }
+    
+    #chat-messages::-webkit-scrollbar {
+      width: 6px;
+    }
+    #chat-messages::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    #chat-messages::-webkit-scrollbar-thumb {
+      background: #d1d5db;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="bg-[#F5F7FA] min-h-screen font-sans">
+
+  <!-- ==================== HEADER ==================== -->
+  <header class="bg-groww-navy text-white sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
+      
+      <!-- Logo -->
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-groww-blue to-groww-green flex items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+          </svg>
+        </div>
+        <div class="font-semibold text-base">Smart Watchlist</div>
+      </div>
+
+      <!-- Search -->
+      <form action="/watchlist/add" method="post" class="flex gap-2 flex-1 max-w-md" autocomplete="off">
+        <input type="hidden" name="user_id" value="{{ user_id }}">
+        <div class="flex-1 relative">
+          <input id="symbol-input" type="text" name="stock_symbol" placeholder="Search & add stock (e.g. RELIANCE)" required
+            class="w-full bg-white/10 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/40
+                   focus:outline-none focus:ring-2 focus:ring-groww-green focus:bg-white focus:text-gray-900 focus:placeholder-gray-400 transition-all">
+          <div id="symbol-suggestions" class="hidden absolute top-full left-0 right-0 mt-1.5 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-20 max-h-56 overflow-y-auto"></div>
+        </div>
+        <button type="submit"
+          class="bg-groww-green text-white text-sm font-medium px-5 py-2.5 rounded-xl hover:bg-groww-greendark active:scale-95 transition-all whitespace-nowrap">
+          Add
+        </button>
+      </form>
+
+    </div>
+  </header>
+
+  <!-- ==================== STATS ==================== -->
+  <div class="bg-white border-b border-gray-100">
+    <div class="max-w-7xl mx-auto px-5 py-5 grid grid-cols-2 gap-4">
+      
+      <div class="bg-gray-50 rounded-xl px-5 py-4 text-center">
+        <div class="text-2xl font-semibold text-gray-900 tabular-nums">{{ stocks|length }}</div>
+        <div class="text-sm text-gray-500 mt-0.5">{{ "Stock" if stocks|length == 1 else "Stocks" }} tracked</div>
+      </div>
+
+      <div class="bg-emerald-50 rounded-xl px-5 py-4 text-center">
+        <div class="text-2xl font-semibold text-groww-green tabular-nums">
+          {{ stocks|selectattr('is_new_since_checkin')|list|length }}
+        </div>
+        <div class="text-sm text-emerald-700/70 mt-0.5">New since last visit</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ==================== MAIN CONTENT ==================== -->
+  <div class="max-w-7xl mx-auto px-5 py-7">
+
+    {% if error == "not_found" %}
+      <div class="mb-5 text-sm text-groww-red bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+        That symbol isn't in our system. Check the spelling and try again.
+      </div>
+    {% endif %}
+
+    <!-- ==================== DEMO BANNER ==================== -->
+    <div id="demo-banner" class="mb-5 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
+      <div class="text-sm text-blue-900">
+        <span class="font-semibold">Checking this outside NSE trading hours?</span>
+        <span id="market-status-text"></span>
+      </div>
+      <div class="flex gap-2 shrink-0">
+        <button onclick="runDemo()" id="demo-run-btn"
+          class="bg-groww-blue text-white text-xs font-medium px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors whitespace-nowrap">
+          Run Demo Scenarios
+        </button>
+        <button onclick="resetDemo()"
+          class="bg-white border border-gray-200 text-gray-600 text-xs font-medium px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap">
+          Reset
+        </button>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="flex flex-wrap gap-3 mb-5 items-center">
+      <input id="filter-price-min" type="number" placeholder="Min price"
+        class="text-sm border border-gray-200 rounded-lg px-3 py-2 w-28 focus:outline-none focus:ring-2 focus:ring-groww-blue/30">
+      <input id="filter-price-max" type="number" placeholder="Max price"
+        class="text-sm border border-gray-200 rounded-lg px-3 py-2 w-28 focus:outline-none focus:ring-2 focus:ring-groww-blue/30">
+
+      <button onclick="clearFilters()" class="text-sm text-groww-blue hover:underline ml-1">Clear</button>
+    </div>
+
+    <div id="empty-msg" class="text-center py-16 text-gray-400 {% if stocks|length > 0 %}hidden{% endif %}">
+      <div class="text-4xl mb-3">📈</div>
+      <div class="text-base">Add a stock above to start tracking</div>
+    </div>
+
+    <!-- ==================== TABLE ==================== -->
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="bg-gray-50/80 border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
+              <th class="px-5 py-3.5 text-center font-medium">Company</th>
+              <th class="px-4 py-3.5 text-center font-medium" title="How many standard deviations today's move is from this stock's own normal daily move">Relative Move</th>
+              <th class="px-4 py-3.5 text-center font-medium">LTP</th>
+              <th class="px-4 py-3.5 text-center font-medium">Change ₹</th>
+              <th class="px-4 py-3.5 text-center font-medium">Change %</th>
+              <th class="px-4 py-3.5 text-center font-medium">Prev Close</th>
+              <th class="px-4 py-3.5 text-center font-medium">High</th>
+              <th class="px-4 py-3.5 text-center font-medium">Low</th>
+              <th class="px-4 py-3.5 text-center font-medium">Volume</th>
+              <th class="px-5 py-3.5 text-center font-medium min-w-[210px]">Status</th>
+              <th class="px-5 py-3.5 text-center font-medium min-w-[170px]">Since Last Visit</th>
+              <th class="px-4 py-3.5"></th>
+            </tr>
+          </thead>
+
+          <tbody id="watchlist-rows" data-user-id="{{ user_id }}" class="divide-y divide-gray-50">
+            {% for stock in stocks %}
+            <tr class="watchlist-row hover:bg-gray-50/60 transition-colors"
+                data-symbol="{{ stock.symbol }}"
+                data-price="{{ stock.price or 0 }}">
+
+              <!-- Company -->
+              <td class="px-5 py-4 text-center">
+                <div class="flex items-center justify-center gap-2">
+                  <span class="font-semibold text-gray-900">{{ stock.symbol }}</span>
+                  {% if stock.is_new_since_checkin %}
+                    <span class="text-[10px] font-semibold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">New</span>
+                  {% endif %}
+                </div>
+              </td>
+
+              <!-- Relative Move Badge -->
+              <td class="px-4 py-4 text-center">
+                {% if stock.raw_pct_change is not none %}
+                  {% if stock.raw_pct_change >= 0 %}
+                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-groww-green">
+                      <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"/>
+                      </svg>
+                      {{ stock.deviation_score }}x
+                    </span>
+                  {% else %}
+                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-groww-red">
+                      <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
+                      </svg>
+                      {{ stock.deviation_score }}x
+                    </span>
+                  {% endif %}
+                {% else %}
+                  <span class="text-gray-400 text-xs">—</span>
+                {% endif %}
+              </td>
+
+              <!-- LTP -->
+              <td class="px-4 py-4 text-center font-medium text-gray-900 tabular-nums price-cell whitespace-nowrap">
+                {% if stock.price %}₹{{ "%.2f"|format(stock.price) }}{% else %}—{% endif %}
+              </td>
+
+              <!-- Change ₹ -->
+              <td class="px-4 py-4 text-center tabular-nums whitespace-nowrap
+                {% if stock.raw_pct_change is not none and stock.raw_pct_change >= 0 %}text-groww-green{% else %}text-groww-red{% endif %}">
+                {% if stock.change_rupees is not none %}
+                  {% if stock.change_rupees >= 0 %}+₹{{ "%.2f"|format(stock.change_rupees) }}{% else %}-₹{{ "%.2f"|format(-stock.change_rupees) }}{% endif %}
+                {% else %}—{% endif %}
+              </td>
+
+              <!-- Change % -->
+              <td class="px-4 py-4 text-center tabular-nums font-medium whitespace-nowrap
+                {% if stock.raw_pct_change is not none and stock.raw_pct_change >= 0 %}text-groww-green{% else %}text-groww-red{% endif %}">
+                {% if stock.raw_pct_change is not none %}{{ "%+.2f"|format(stock.raw_pct_change) }}%{% else %}—{% endif %}
+              </td>
+
+              <!-- Prev Close -->
+              <td class="px-4 py-4 text-center text-gray-500 tabular-nums whitespace-nowrap">
+                {% if stock.prev_close %}₹{{ "%.2f"|format(stock.prev_close) }}{% else %}—{% endif %}
+              </td>
+
+              <!-- High -->
+              <td class="px-4 py-4 text-center text-gray-500 tabular-nums whitespace-nowrap">
+                {% if stock.day_high %}₹{{ "%.2f"|format(stock.day_high) }}{% else %}—{% endif %}
+              </td>
+
+              <!-- Low -->
+              <td class="px-4 py-4 text-center text-gray-500 tabular-nums whitespace-nowrap">
+                {% if stock.day_low %}₹{{ "%.2f"|format(stock.day_low) }}{% else %}—{% endif %}
+              </td>
+
+              <!-- Volume -->
+              <td class="px-4 py-4 text-center text-gray-500 tabular-nums whitespace-nowrap">
+                {% if stock.volume %}{{ "{:,}".format(stock.volume) }}{% else %}—{% endif %}
+              </td>
+
+              <!-- Status -->
+              <td class="px-5 py-4 text-center text-gray-600 text-xs leading-relaxed">
+                {{ stock.reason_text }}
+              </td>
+
+              <!-- Since Last Visit -->
+              <td class="px-5 py-4 text-center text-xs leading-relaxed
+                {% if stock.is_new_since_checkin %}text-gray-900 font-medium{% else %}text-gray-400{% endif %}">
+                {{ stock.since_visit_text or '—' }}
+              </td>
+
+              <!-- Remove -->
+              <td class="px-4 py-4 text-center">
+                <form action="/watchlist/remove" method="post">
+                  <input type="hidden" name="user_id" value="{{ user_id }}">
+                  <input type="hidden" name="stock_symbol" value="{{ stock.symbol }}">
+                  <button type="submit" title="Remove" class="text-gray-300 hover:text-groww-red transition-colors p-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="3 6 5 6 21 6"></polyline>
+                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== CHAT BOT ==================== -->
+  <button id="chat-toggle" onclick="toggleChat()"
+    class="fixed bottom-6 right-6 bg-groww-navy text-white rounded-full w-14 h-14 shadow-xl flex items-center justify-center hover:scale-105 active:scale-95 transition-all z-40">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+    </svg>
+  </button>
+
+  <div id="chat-panel" class="fixed bottom-24 right-6 w-[380px] max-w-[92vw] bg-white rounded-2xl shadow-2xl border border-gray-200 hidden flex flex-col z-40 overflow-hidden" style="height: 520px;">
+    
+    <!-- Chat Header -->
+    <div class="bg-groww-navy text-white px-5 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-full bg-groww-green/20 flex items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-groww-green" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <div>
+          <div class="font-semibold text-sm">Watchlist Assistant</div>
+          <div class="text-[11px] text-white/50">Ask anything about your stocks</div>
+        </div>
+      </div>
+      <button onclick="toggleChat()" class="text-white/60 hover:text-white transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- Messages -->
+    <div id="chat-messages" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-gray-50/50"></div>
+
+    <!-- Quick Replies -->
+    <div id="chat-quick-replies" class="px-4 py-2 flex flex-wrap gap-2 bg-white border-t border-gray-100"></div>
+
+    <!-- Input -->
+    <div class="border-t border-gray-100 p-3 bg-white flex gap-2">
+      <input id="chat-input" type="text" placeholder="Type your question..."
+        class="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-groww-blue/40 focus:border-groww-blue transition-all">
+      <button onclick="sendCustomMessage()"
+        class="bg-groww-blue text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-600 transition-colors">
+        Send
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const container = document.getElementById('watchlist-rows');
+    const userId = container ? container.dataset.userId : null;
+
+    async function refreshWatchlist() {
+      if (!userId) return;
+      try {
+        const res = await fetch(`/watchlist/${userId}/data`);
+        const stocks = await res.json();
+        document.getElementById('empty-msg').classList.toggle('hidden', stocks.length > 0);
+        stocks.forEach(stock => {
+          const row = container.querySelector(`tr[data-symbol="${stock.symbol}"]`);
+          if (!row) return;
+          const priceEl = row.querySelector('.price-cell');
+          if (priceEl && stock.price) {
+            priceEl.textContent = '₹' + stock.price.toFixed(2);
+            row.dataset.price = stock.price;
+          }
+        });
+      } catch (e) {
+        // silent -- next 5s poll will retry
+      }
+    }
+    setInterval(refreshWatchlist, 5000);
+
+    // Symbol search
+    const symbolInput = document.getElementById('symbol-input');
+    const suggestionsBox = document.getElementById('symbol-suggestions');
+    let debounceTimer;
+
+    symbolInput.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      const query = symbolInput.value.trim();
+      if (!query) { suggestionsBox.classList.add('hidden'); return; }
+      debounceTimer = setTimeout(async () => {
+        const res = await fetch(`/symbols/search?q=${encodeURIComponent(query)}`);
+        const matches = await res.json();
+        if (matches.length === 0) { suggestionsBox.classList.add('hidden'); return; }
+        suggestionsBox.innerHTML = matches.map(sym =>
+          `<div class="px-4 py-2.5 text-sm text-gray-800 hover:bg-groww-green/10 cursor-pointer" data-sym="${sym}">${sym}</div>`
+        ).join('');
+        suggestionsBox.classList.remove('hidden');
+      }, 200);
+    });
+
+    suggestionsBox.addEventListener('click', (e) => {
+      const sym = e.target.dataset.sym;
+      if (sym) { symbolInput.value = sym; suggestionsBox.classList.add('hidden'); }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!symbolInput.contains(e.target) && !suggestionsBox.contains(e.target)) {
+        suggestionsBox.classList.add('hidden');
+      }
+    });
+
+    // Filters
+    function applyFilters() {
+      const minPrice = parseFloat(document.getElementById('filter-price-min').value) || null;
+      const maxPrice = parseFloat(document.getElementById('filter-price-max').value) || null;
+
+      if (!container) return;
+      container.querySelectorAll('tr[data-symbol]').forEach(row => {
+        const price = parseFloat(row.dataset.price);
+        let show = true;
+        if (minPrice !== null && price < minPrice) show = false;
+        if (maxPrice !== null && price > maxPrice) show = false;
+        row.style.display = show ? '' : 'none';
+      });
+    }
+
+    function clearFilters() {
+      document.getElementById('filter-price-min').value = '';
+      document.getElementById('filter-price-max').value = '';
+      applyFilters();
+    }
+
+    document.getElementById('filter-price-min').addEventListener('input', applyFilters);
+    document.getElementById('filter-price-max').addEventListener('input', applyFilters);
+
+    // ==================== DEMO BANNER ====================
+    // NSE-declared holidays for 2026 (add more here if needed before your deadline)
+    const NSE_HOLIDAYS_2026 = {
+      "2026-09-14": "Ganesh Chaturthi",
+      "2026-11-08": "Diwali Laxmi Pujan (Muhurat Trading only)",
+    };
+
+    function setMarketStatusText() {
+      const el = document.getElementById('market-status-text');
+      if (!el) return;
+
+      const now = new Date();
+      const day = now.getDay(); // 0 = Sunday, 6 = Saturday
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const dayName = dayNames[day];
+      const dateKey = now.toISOString().slice(0, 10); // "2026-09-06"
+
+      let reason = null;
+      if (day === 0 || day === 6) {
+        reason = `it's ${dayName}, and NSE doesn't trade on weekends`;
+      } else if (NSE_HOLIDAYS_2026[dateKey]) {
+        reason = `it's ${dayName}, an NSE trading holiday (${NSE_HOLIDAYS_2026[dateKey]})`;
+      } else {
+        const istHour = now.getHours() + now.getMinutes() / 60;
+        if (istHour < 9.25 || istHour > 15.5) {
+          reason = `it's currently outside NSE trading hours (9:15 AM–3:30 PM IST) on ${dayName}`;
+        }
+      }
+
+      if (reason) {
+        el.textContent = ` Right now ${reason}, so live prices won't move on their own. This button feeds a real test move through our actual scoring engine, so you can see the "new since visit" logic working live, without waiting for the next trading session.`;
+      } else {
+        el.textContent = ` NSE should be open right now (${dayName}) -- if prices still aren't updating, use this button to inject a test move and confirm the scoring engine itself is working.`;
+      }
+    }
+    document.addEventListener('DOMContentLoaded', setMarketStatusText);
+
+    async function runDemo() {
+      const btn = document.getElementById('demo-run-btn');
+      btn.disabled = true;
+      btn.textContent = 'Running...';
+      try {
+        const res = await fetch(`/watchlist/${userId}/demo/setup`, { method: 'POST' });
+        const data = await res.json();
+        console.log('Demo setup:', data.results);
+        location.reload();
+      } catch (e) {
+        btn.textContent = 'Failed — try again';
+        btn.disabled = false;
+      }
+    }
+
+    async function resetDemo() {
+      await fetch(`/watchlist/${userId}/demo/reset`, { method: 'POST' });
+      location.reload();
+    }
+
+    // ==================== CHAT ====================
+    const LABELS = {
+      English:  { greeting: "Hi! How can I help you understand your watchlist?", summary: "Summarize my watchlist", terms: "Explain the prices & terms", impact: "What do these changes mean?", askOne: "Ask about one stock", somethingElse: "Ask something else", placeholder: "Type your question..." },
+      हिन्दी:    { greeting: "नमस्ते! मैं आपकी वॉचलिस्ट समझने में कैसे मदद कर सकता हूँ?", summary: "मेरी वॉचलिस्ट का सारांश", terms: "कीमतें और शब्द समझाएं", impact: "इन बदलावों का मतलब?", askOne: "किसी एक स्टॉक के बारे में", somethingElse: "कुछ और पूछें", placeholder: "अपना सवाल लिखें..." },
+      தமிழ்:     { greeting: "வணக்கம்! உங்கள் வாட்ச்லிஸ்டைப் புரிந்துகொள்ள உதவுகிறேன்", summary: "வாட்ச்லிஸ்ட் சுருக்கம்", terms: "விலைகள் & சொற்கள்", impact: "மாற்றங்களின் அர்த்தம்?", askOne: "ஒரு பங்கு பற்றி", somethingElse: "வேறு ஏதாவது", placeholder: "உங்கள் கேள்வி..." },
+      తెలుగు:    { greeting: "నమస్కారం! మీ వాచ్‌లిస్ట్‌ను అర్థం చేసుకోవడంలో సహాయం చేస్తాను", summary: "వాచ్‌లిస్ట్ సారాంశం", terms: "ధరలు & పదాలు", impact: "మార్పుల అర్థం?", askOne: "ఒక స్టాక్ గురించి", somethingElse: "మరేదైనా", placeholder: "మీ ప్రశ్న..." },
+      বাংলা:     { greeting: "নমস্কার! আপনার ওয়াচলিস্ট বুঝতে সাহায্য করি", summary: "ওয়াচলিস্ট সারাংশ", terms: "দাম ও শব্দ", impact: "পরিবর্তনের অর্থ?", askOne: "একটি স্টক সম্পর্কে", somethingElse: "অন্য কিছু", placeholder: "আপনার প্রশ্ন..." },
+      मराठी:     { greeting: "नमस्कार! तुमची वॉचलिस्ट समजून घेण्यास मदत करतो", summary: "वॉचलिस्ट सारांश", terms: "किंमती आणि शब्द", impact: "बदलांचा अर्थ?", askOne: "एका स्टॉकबद्दल", somethingElse: "आणखी काही", placeholder: "तुमचा प्रश्न..." },
+      ગુજરાતી:   { greeting: "નમસ્તે! તમારી વોચલિસ્ટ સમજવામાં મદદ કરું", summary: "વોચલિસ્ટ સારાંશ", terms: "ભાવ અને શબ્દો", impact: "ફેરફારોનો અર્થ?", askOne: "એક સ્ટોક વિશે", somethingElse: "બીજું કંઈક", placeholder: "તમારો પ્રશ્ન..." },
+      ਪੰਜਾਬੀ:    { greeting: "ਸਤ ਸ੍ਰੀ ਅਕਾਲ! ਮੈਂ ਤੁਹਾਡੀ ਵਾਚਲਿਸਟ ਸਮਝਣ ਵਿੱਚ ਮਦਦ ਕਰਦਾ ਹਾਂ", summary: "ਵਾਚਲਿਸਟ ਸਾਰ", terms: "ਕੀਮਤਾਂ ਅਤੇ ਸ਼ਬਦ", impact: "ਤਬਦੀਲੀਆਂ ਦਾ ਮਤਲਬ?", askOne: "ਇੱਕ ਸਟਾਕ ਬਾਰੇ", somethingElse: "ਕੁਝ ਹੋਰ", placeholder: "ਤੁਹਾਡਾ ਸਵਾਲ..." },
+      മലയാളം:   { greeting: "നമസ്കാരം! നിങ്ങളുടെ വാച്ച്‌ലിസ്റ്റ് മനസ്സിലാക്കാൻ സഹായിക്കാം", summary: "വാച്ച്‌ലിസ്റ്റ് സംഗ്രഹം", terms: "വിലകളും വാക്കുകളും", impact: "മാറ്റങ്ങളുടെ അർത്ഥം?", askOne: "ഒരു സ്റ്റോക്കിനെക്കുറിച്ച്", somethingElse: "മറ്റെന്തെങ്കിലും", placeholder: "നിങ്ങളുടെ ചോദ്യം..." },
+      ଓଡ଼ିଆ:     { greeting: "ନମସ୍କାର! ମୁଁ ଆପଣଙ୍କ ୱାଚଲିଷ୍ଟ ବୁଝିବାରେ ସାହାଯ୍ୟ କରିବି", summary: "ୱାଚଲିଷ୍ଟ ସାରାଂଶ", terms: "ଦର ଏବଂ ଶବ୍ଦ", impact: "ପରିବର୍ତ୍ତନର ଅର୍ଥ?", askOne: "ଏକ ଷ୍ଟକ୍ ବିଷୟରେ", somethingElse: "ଅନ୍ୟ କିଛି", placeholder: "ଆପଣଙ୍କ ପ୍ରଶ୍ନ..." },
+      ಕನ್ನಡ:     { greeting: "ನಮಸ್ಕಾರ! ನಿಮ್ಮ ವಾಚ್‌ಲಿಸ್ಟ್ ಅರ್ಥಮಾಡಿಕೊಳ್ಳಲು ಸಹಾಯ ಮಾಡುತ್ತೇನೆ", summary: "ವಾಚ್‌ಲಿಸ್ಟ್ ಸಾರಾಂಶ", terms: "ಬೆಲೆಗಳು & ಪದಗಳು", impact: "ಬದಲಾವಣೆಗಳ ಅರ್ಥ?", askOne: "ಒಂದು ಸ್ಟಾಕ್ ಬಗ್ಗೆ", somethingElse: "ಬೇರೆ ಏನಾದರೂ", placeholder: "ನಿಮ್ಮ ಪ್ರಶ್ನೆ..." },
+    };
+
+    let currentLanguage = null;
+
+    function toggleChat() {
+      const panel = document.getElementById('chat-panel');
+      panel.classList.toggle('hidden');
+      if (!panel.classList.contains('hidden') && !currentLanguage) showLanguagePicker();
+    }
+
+    function addMessage(text, fromUser) {
+      const msgs = document.getElementById('chat-messages');
+      const bubble = document.createElement('div');
+      bubble.className = fromUser
+        ? 'self-end bg-groww-blue text-white rounded-2xl rounded-br-md px-4 py-2.5 max-w-[85%] text-sm shadow-sm'
+        : 'self-start bg-white text-gray-800 rounded-2xl rounded-bl-md px-4 py-2.5 max-w-[85%] text-sm shadow-sm border border-gray-100 whitespace-pre-wrap';
+      bubble.textContent = text;
+      msgs.appendChild(bubble);
+      msgs.scrollTop = msgs.scrollHeight;
+      return bubble;
+    }
+
+    function setQuickReplies(buttons) {
+      const quick = document.getElementById('chat-quick-replies');
+      quick.innerHTML = '';
+      buttons.forEach(({ label, onClick }) => {
+        const btn = document.createElement('button');
+        btn.textContent = label;
+        btn.className = 'text-xs bg-gray-100 hover:bg-groww-blue/10 text-gray-700 hover:text-groww-blue px-3 py-1.5 rounded-full transition-colors';
+        btn.onclick = onClick;
+        quick.appendChild(btn);
+      });
+    }
+
+    function showLanguagePicker() {
+      document.getElementById('chat-messages').innerHTML = '';
+      addMessage('Please choose your language', false);
+      setQuickReplies(Object.keys(LABELS).map(lang => ({ label: lang, onClick: () => selectLanguage(lang) })));
+    }
+
+    function selectLanguage(lang) {
+      currentLanguage = lang;
+      const L = LABELS[lang];
+      document.getElementById('chat-messages').innerHTML = '';
+      document.getElementById('chat-input').placeholder = L.placeholder;
+      addMessage(L.greeting, false);
+      showMainMenu();
+    }
+
+    function showMainMenu() {
+      const L = LABELS[currentLanguage];
+      setQuickReplies([
+        { label: L.summary, onClick: () => askPreset('summary', L.summary) },
+        { label: L.terms, onClick: () => askPreset('terms', L.terms) },
+        { label: L.impact, onClick: () => askPreset('impact_all', L.impact) },
+      ]);
+    }
+
+    function getWatchlistSymbols() {
+      if (!container) return [];
+      return Array.from(container.querySelectorAll('[data-symbol]')).map(el => el.dataset.symbol);
+    }
+
+    function askPreset(mode, buttonLabel) {
+      addMessage(buttonLabel, true);
+      sendChat(mode, null, null, () => {
+        const L = LABELS[currentLanguage];
+        if (mode === 'impact_all') {
+          setQuickReplies([
+            { label: L.askOne, onClick: showStockPicker },
+            { label: L.somethingElse, onClick: showMainMenu },
+          ]);
+        } else {
+          setQuickReplies([{ label: L.somethingElse, onClick: showMainMenu }]);
+        }
+      });
+    }
+
+    function showStockPicker() {
+      const L = LABELS[currentLanguage];
+      addMessage(L.askOne, true);
+      const symbols = getWatchlistSymbols();
+      setQuickReplies(symbols.map(sym => ({
+        label: sym,
+        onClick: () => {
+          addMessage(sym, true);
+          sendChat('impact_one', null, sym, () => {
+            setQuickReplies([
+              { label: L.askOne, onClick: showStockPicker },
+              { label: L.somethingElse, onClick: showMainMenu },
+            ]);
+          });
+        },
+      })));
+    }
+
+    async function sendChat(mode, message, symbol, onDone) {
+      const thinking = addMessage('...', false);
+      try {
+        const res = await fetch(`/watchlist/${userId}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ language: currentLanguage, mode, message, symbol }),
+        });
+        const data = await res.json();
+        thinking.remove();
+        addMessage(data.reply, false);
+      } catch (e) {
+        thinking.remove();
+        addMessage('Sorry, something went wrong. Please try again.', false);
+      }
+      if (onDone) onDone();
+    }
+
+    function sendCustomMessage() {
+      const input = document.getElementById('chat-input');
+      const text = input.value.trim();
+      if (!text || !currentLanguage) return;
+      input.value = '';
+      addMessage(text, true);
+      sendChat(null, text, null, showMainMenu);
+    }
+
+    document.getElementById('chat-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendCustomMessage();
+    });
+  </script>
+</body>
+</html>
