@@ -1,6 +1,6 @@
 # Smart Market Watchlist
 
-A smart stock watchlist that doesn't just show prices - it tells you **what meaningfully changed** since you last checked, judged against each stock's **own normal behaviour** (not a flat 5% rule).
+A smart stock watchlist that doesn't just show prices it tells you **what meaningfully changed** since you last checked, judged against each stock's **own normal behaviour** (not a flat 5% rule).
 
 Built for the **Code by Groww Hackathon**.
 
@@ -49,7 +49,7 @@ Transparent math. No black box. No investment advice.
 
 **Why relative moves, not flat thresholds.** Before writing any code, I compared how 7+ existing platforms flag stock moves and found every one uses a fixed percentage cutoff, treating a blue-chip and a small-cap identically. Judging a move against a stock's *own* historical volatility, not a universal number, is the entire premise of this project, validated before implementation started.
 
-**Why sector comparison was cut.** An early version compared a stock's move to its sector average. I removed it deliberately — it added a second axis of "meaningful" that muddied the pitch and wasn't defensible with the data available. Every score here is purely a stock judged against its own history.
+**Why sector comparison was cut.** An early version compared a stock's move to its sector average. I removed it deliberately it added a second axis of "meaningful" that muddied the pitch and wasn't defensible with the data available. Every score here is purely a stock judged against its own history.
 
 **Why multilingual AI, not just an English chatbot.** SEBI's Investor Survey 2025 covering 90,000+ households across 400 cities and 1,000 villages found a consistent preference for investor education in regional languages across every demographic group. RBI/NCFE financial literacy data has repeatedly shown literacy stuck around 27%, and RBI's National Strategy for Financial Inclusion (2025-30) is explicitly built around improving last-mile delivery. The assistant's 11-language support directly targets that gap: it only explains numbers the deterministic engine already computed, so language access is added without touching the trustworthiness of the scoring.
 
