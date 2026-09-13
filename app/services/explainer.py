@@ -1,32 +1,22 @@
-"""
-AI chat assistant -- uses Groq's free tier.
-Reads already-computed watchlist data and explains it in plain language.
-
-The AI NEVER computes scores or decides what is meaningful.
-signal_engine.py remains deterministic and unchanged.
-
-The AI only explains/translates already-computed data. It never gives
-investment advice, buy/sell recommendations, or price predictions.
-
-"""
 
 import os
 from dotenv import load_dotenv
-from groq import Groq
+from google import genai
+from google.genai import types
 
-# Environment and Groq client setup
+# Environment and Gemini client setup
 
 load_dotenv()
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-if not GROQ_API_KEY:
-    print("WARNING: GROQ_API_KEY is not set. AI explanations will use fallback mode.")
+if not GEMINI_API_KEY:
+    print("WARNING: GEMINI_API_KEY is not set. AI explanations will use fallback mode.")
 
-client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 
-MODEL = "qwen/qwen3.8-27b"
+MODEL = "gemini-flash-lite-latest"
 
 
 def _format_money(value) -> str:
@@ -242,10 +232,7 @@ def chat_response(
     user_message: str | None = None,
     symbol: str | None = None,
 ) -> str:
-    """
-    Generate a constrained plain-language explanation of already-computed data.
-    The function always returns a string, including when Groq fails.
-    """
+
     only_symbol = symbol if mode == "impact_one" else None
     data_summary = _build_data_summary(stocks, only_symbol=only_symbol)
 
@@ -280,49 +267,43 @@ def chat_response(
     )
 
     if client is None:
-        print("GROQ SKIPPED: GROQ_API_KEY is missing.")
+        print("GEMINI SKIPPED: GEMINI_API_KEY is missing.")
         return _fallback_summary(stocks, only_symbol=only_symbol, mode=mode)
 
     try:
-        print("\n========== GROQ CALL START ==========")
+        print("\n========== GEMINI CALL START ==========")
         print(f"Model      : {MODEL}")
         print(f"Language   : {language}")
         print(f"Mode       : {mode}")
         print(f"Symbol     : {symbol}")
-        print(f"API Key Set: {bool(GROQ_API_KEY)}")
+        print(f"API Key Set: {bool(GEMINI_API_KEY)}")
         print("=====================================\n")
 
-        response = client.chat.completions.create(
+        response = client.models.generate_content(
             model=MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a safe, concise stock-watchlist explainer. "
-                        "You never give investment advice, recommendations, or predictions. "
-                        "You only explain supplied data in simple language."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": prompt,
-                },
-            ],
-            temperature=0.2,
-            max_tokens=650,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=(
+                    "You are a safe, concise stock-watchlist explainer. "
+                    "You never give investment advice, recommendations, or predictions. "
+                    "You only explain supplied data in simple language."
+                ),
+                temperature=0.2,
+                max_output_tokens=650,
+            ),
         )
 
-        reply = response.choices[0].message.content
+        reply = response.text
 
         if not reply or not reply.strip():
-            print("GROQ ERROR: Groq returned an empty response.")
+            print("GEMINI ERROR: Gemini returned an empty response.")
             return _fallback_summary(stocks, only_symbol=only_symbol, mode=mode)
 
-        print("GROQ CALL SUCCESSFUL")
+        print("GEMINI CALL SUCCESSFUL")
         return reply.strip()
 
     except Exception as error:
-        print("\n========== GROQ ERROR ==========")
+        print("\n========== GEMINI ERROR ==========")
         print(f"Error Type : {type(error).__name__}")
         print(f"Error Msg  : {error}")
         print("================================\n")

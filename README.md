@@ -26,7 +26,7 @@ Transparent math. No black box. No investment advice.
 - **Relative Move** score vs each stock's historical baseline
 - Plain-language **Status** explaining why a move matters
 - **Since Last Visit** - what changed while you were away
-- Multilingual AI assistant (Groq, 11 Indian languages) that only explains already-computed data
+- Multilingual AI assistant (Gemini, 11 Indian languages) that only explains already-computed data
 - Filters (price range)
 - Graceful fallbacks when AI / live data is unavailable
 
@@ -39,7 +39,7 @@ Transparent math. No black box. No investment advice.
 | Historical baselines | Kaggle NSE dataset (offline) | Stable, zero rate-limit risk |
 | Live prices | yfinance (background fetch) | Simple, good enough for prototype |
 | Scoring | Deterministic Python (`signal_engine`) | Transparent, testable, no ML magic |
-| AI explainer | Groq (Llama) | Explains only, never decides scores |
+| AI explainer | Google Gemini (`gemini-flash-lite-latest`) | Explains only, never decides scores |
 | UI | FastAPI + Jinja2 + Tailwind | Single deploy, solo-friendly |
 | DB | PostgreSQL (Supabase) | Persistent watchlists + baselines |
 
@@ -59,7 +59,7 @@ Transparent math. No black box. No investment advice.
 
 **Why there's a built-in demo mode** : NSE is closed most of the time a reviewer opens this app. The app detects market hours and offers a "Run Demo Scenarios" button that injects synthetic price moves through the *real* scoring pipeline, not a mock an honest way to prove the logic works outside trading hours.
 
-**Why Groq instead of Gemini** : Gemini's free-tier limits made the chat assistant fail after 1-2 messages. Groq's free tier is far more generous for this workload, and the explainer falls back to a deterministic, localized response if the AI call fails the feature never just breaks.
+**Why Gemini as the AI explainer** : The chat assistant only ever explains numbers the deterministic engine already computed, so any capable model works here the real requirements were a genuinely free tier and a mainstream, trusted provider. Gemini's `gemini-flash-lite-latest` fits both: no card required, and the explainer falls back to a deterministic, localized response if the AI call ever fails the feature never just breaks.
 
 **What was knowingly simplified** : The Relative Move score assumes a stock's average daily return is close enough to zero to skip tracking separately true for short lookback windows, but a simplification worth naming. A proper baseline mean would make the z-score fully rigorous instead of a close approximation.
 
@@ -71,7 +71,7 @@ Transparent math. No black box. No investment advice.
 - **Frontend:** Jinja2 templates + Tailwind CSS + vanilla JS
 - **Database:** PostgreSQL (Supabase)
 - **Data:** Kaggle historical OHLCV + yfinance live
-- **AI:** Groq API (OpenAI-compatible)
+- **AI:** Google Gemini API (`gemini-flash-lite-latest`)
 
 ---
 
@@ -89,7 +89,7 @@ pip install -r requirements.txt
 cp .env.example .env
 # Fill in:
 #   DATABASE_URL=postgresql://...   (Supabase session pooler)
-#   GROQ_API_KEY=gsk_...
+#   GEMINI_API_KEY=...              (from https://aistudio.google.com/apikey)
 
 # 3. Create tables (start app once)
 uvicorn app.main:app --reload
